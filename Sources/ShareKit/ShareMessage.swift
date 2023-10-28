@@ -260,6 +260,8 @@ enum OperationKey {
     static let objectDelete = "od"
     static let listInsert = "li"
     static let listDelete = "ld"
+    static let stringInsert = "si"
+    static let stringDelete = "sd"
     static let insert = "i"
     static let delete = "d"
 }

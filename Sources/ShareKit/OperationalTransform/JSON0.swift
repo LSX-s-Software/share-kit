@@ -90,6 +90,33 @@ struct JSON0Transformer: OperationalTransformer {
                 }
                 let transform = try subtypeTransformer.apply(operation[OperationKey.operation].array ?? [], to: json[pathSubscript])
                 json[pathSubscript] = transform
+            } else if operation[OperationKey.stringInsert] != .undefined || operation[OperationKey.stringDelete] != .undefined {
+                var parentPath = pathSubscript
+                guard let lastKey = parentPath.popLast(), case let .index(offset) = lastKey.anyCodableKey else {
+                    throw OperationalTransformError.invalidPath
+                }
+                guard var string = json[parentPath].string else {
+                    throw OperationalTransformError.oldDataMismatch
+                }
+                if offset > string.count {
+                    throw OperationalTransformError.indexOutOfRange
+                }
+                let index = string.index(string.startIndex, offsetBy: offset)
+                if operation[OperationKey.stringInsert] != .undefined {
+                    guard case let .string(insertion) = operation[OperationKey.stringInsert] else {
+                        throw OperationalTransformError.invalidJSONData
+                    }
+                    string.insert(contentsOf: insertion, at: index)
+                } else {
+                    guard case let .string(deletion) = operation[OperationKey.stringDelete] else {
+                        throw OperationalTransformError.invalidJSONData
+                    }
+                    if string[index..<string.endIndex] != deletion {
+                        throw OperationalTransformError.oldDataMismatch
+                    }
+                    string.removeSubrange(index..<string.endIndex)
+                }
+                json[parentPath] = .string(string)
             } else {
                 throw OperationalTransformError.unsupportedOperation
             }
@@ -131,6 +158,12 @@ struct JSON0Transformer: OperationalTransformer {
                 newOperation[OperationKey.subtype] = operation[OperationKey.subtype]
                 let subOperations = try subtypeTransformer.inverse(operation[OperationKey.operation].array ?? [])
                 newOperation[OperationKey.operation] = .array(subOperations)
+            }
+            if operation[OperationKey.stringInsert] != .undefined {
+                newOperation[OperationKey.stringDelete] = operation[OperationKey.stringInsert]
+            }
+            if operation[OperationKey.stringDelete] != .undefined {
+                newOperation[OperationKey.stringInsert] = operation[OperationKey.stringDelete]
             }
             return newOperation
         }
