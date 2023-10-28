@@ -50,11 +50,11 @@ ShareClient(eventLoopGroupProvider: .createNew).connect("ws://localhost:8080") {
     let document: ShareDocument<Player> = connection.subscribe("doc1", in: "collection")
 }
 ```
-`ShareDocument` uses Combine publisher, `ShareDocument.$data`, to broadcast document updates.
+`ShareDocument` uses Combine publisher, `ShareDocument.value`, to broadcast document updates.
 ```swift
 ShareClient(eventLoopGroupProvider: .createNew).connect("ws://localhost:8080") { connection in
     let document: ShareDocument<Player> = connection.subscribe("doc1", in: "collection")
-    document.$data
+    document.value
         .compactMap { $0 }
         .receive(on: RunLoop.main)
         .sink { player in
