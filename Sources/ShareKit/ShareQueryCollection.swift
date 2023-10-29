@@ -4,8 +4,8 @@ import Combine
 protocol OperationalTransformQuery {
     var collection: String { get }
     var query: AnyCodable { get }
-    func put(_ data: [VersionedDocumentData]) throws
-    func sync(_ diffs: [ArrayChange]) throws
+    func put(_ data: [VersionedDocumentData]) async throws
+    func sync(_ diffs: [ArrayChange]) async throws
 }
 
 final public class ShareQueryCollection<Entity> where Entity: Codable {
@@ -23,8 +23,8 @@ final public class ShareQueryCollection<Entity> where Entity: Codable {
         self.connection = connection
     }
 
-    public func create(_ data: Entity) throws -> ShareDocument<Entity> {
-        return try connection.create(data, in: collection)
+    public func create(_ data: Entity) async throws -> ShareDocument<Entity> {
+        return try await connection.create(data, in: collection)
     }
 
     func subscribe(_ queryID: UInt) {
@@ -34,17 +34,17 @@ final public class ShareQueryCollection<Entity> where Entity: Codable {
 }
 
 extension ShareQueryCollection: OperationalTransformQuery {
-    func put(_ data: [VersionedDocumentData]) throws {
-        let newDocuments: [ShareDocument<Entity>] = try data.map {
-            let document: ShareDocument<Entity> = try connection.getDocument($0.document, in: collection)
-            try document.put($0.data, version: $0.version, type: $0.type)
-            document.subscribe()
+    func put(_ data: [VersionedDocumentData]) async throws {
+        let newDocuments: [ShareDocument<Entity>] = try await data.asyncMap { versionedDocument in
+            let document: ShareDocument<Entity> = try connection.getDocument(versionedDocument.document, in: collection)
+            try await document.put(versionedDocument.data, version: versionedDocument.version, type: versionedDocument.type)
+            try await document.subscribe()
             return document
         }
         documents.send(newDocuments)
     }
 
-    func sync(_ diffs: [ArrayChange]) throws {
+    func sync(_ diffs: [ArrayChange]) async throws {
         for diff in diffs {
             switch diff {
             case .move(let from, let to, let howMany):
@@ -56,9 +56,9 @@ extension ShareQueryCollection: OperationalTransformQuery {
                 documents.send(changedDocuments)
             case .insert(let index, let values):
                 // TODO: cascade subscription
-                let docs: [ShareDocument<Entity>] = try values.map { item in
+                let docs: [ShareDocument<Entity>] = try await values.asyncMap { item in
                     let doc: ShareDocument<Entity> = try connection.getDocument(item.document, in: self.collection)
-                    try doc.put(item.data, version: item.version, type: item.type)
+                    try await doc.put(item.data, version: item.version, type: item.type)
                     return doc
                 }
                 var changedDocuments = documents.value

@@ -17,15 +17,17 @@ class CounterViewModel: ObservableObject {
     init() {
         let client = ShareClient(eventLoopGroupProvider: .createNew)
         client.connect("ws://localhost:8080") { connection in
-            guard let document: ShareDocument<Counter> = try? connection.subscribe(document: "counter", in: "examples") else {
-                return
+            Task {
+                guard let document: ShareDocument<Counter> = try? await connection.subscribe(document: "counter", in: "examples") else {
+                    return
+                }
+                await document.value
+                    .compactMap { $0 }
+                    .receive(on: RunLoop.main)
+                    .assign(to: \.counter, on: self)
+                    .store(in: &self.bag)
+                self.document = document
             }
-            document.value
-                .compactMap { $0 }
-                .receive(on: RunLoop.main)
-                .assign(to: \.counter, on: self)
-                .store(in: &self.bag)
-            self.document = document
         }
         self.client = client
     }
@@ -35,12 +37,14 @@ class CounterViewModel: ObservableObject {
     }
 
     func bumpCounter() {
-        do {
-            try document?.change {
-                try $0.numClicks.set(counter.numClicks + 1)
+        Task {
+            do {
+                try await document?.change {
+                    try $0.numClicks.set(counter.numClicks + 1)
+                }
+            } catch {
+                print(error)
             }
-        } catch {
-            print(error)
         }
     }
 }

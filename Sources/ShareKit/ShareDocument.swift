@@ -1,5 +1,7 @@
 import Foundation
+import NIOCore
 import Combine
+import OSLog
 
 public struct DocumentID: Hashable {
     let key: String
@@ -11,7 +13,9 @@ public struct DocumentID: Hashable {
     }
 }
 
-final public class ShareDocument<Entity>: Identifiable where Entity: Codable {
+public actor ShareDocument<Entity>: Identifiable where Entity: Codable {
+    private let logger = Logger(subsystem: "ShareKit", category: "ShareDocument")
+
     enum ShareDocumentError: Error {
         case transformType
         case documentState
@@ -19,9 +23,9 @@ final public class ShareDocument<Entity>: Identifiable where Entity: Codable {
         case decodeDocumentData
         case operationalTransformType
         case applyTransform
-        case subscription
         case operationVersion
         case operationAck
+        case alreadySubscribed
     }
 
     public let id: DocumentID
@@ -41,7 +45,7 @@ final public class ShareDocument<Entity>: Identifiable where Entity: Codable {
     }
 
     var inflightOperation: OperationData?
-    var queuedOperations: [OperationData] = []
+    var queuedOperations = CircularBuffer<OperationData>()
 
     let connection: ShareConnection
 
@@ -52,38 +56,60 @@ final public class ShareDocument<Entity>: Identifiable where Entity: Codable {
         self.value = CurrentValueSubject(nil)
     }
 
-    public func create(_ entity: Entity, type: OperationalTransformType? = nil) throws {
+    func setInflightOperation(_ operation: OperationData?) {
+        inflightOperation = operation
+    }
+
+    func appendOperation(_ operation: OperationData) {
+        queuedOperations.append(operation)
+    }
+
+    func prependOperation(_ operation: OperationData) {
+        queuedOperations.prepend(operation)
+    }
+
+    public func create(_ entity: Entity, type: OperationalTransformType? = nil) async throws {
         if !notCreated {
             throw ShareDocumentError.documentState
         }
         let jsonData = try JSONEncoder().encode(entity)
         let json = try AnyCodable(data: jsonData)
-        try put(json, version: 0, type: type)
-        send(.create(type: type ?? connection.defaultTransformer.type, data: json))
+        try await put(json, version: 0, type: type)
+        try await send(.create(type: type ?? connection.defaultTransformer.type, data: json))
     }
 
-    public func delete() {
-        try? trigger(event: .delete)
-        self.send(.delete(isDeleted: true))
+    public func delete() async throws {
+        try trigger(event: .delete)
+        try await self.send(.delete(isDeleted: true))
     }
 
-    public func subscribe() {
-        guard state == .blank else {
-            print("Document subscribe canceled: \(state)")
-            return
-        }
-        let msg = SubscribeMessage(collection: id.collection, document: id.key, version: version)
-        connection.send(message: msg).whenComplete { result in
-            switch result {
-            case .success:
-                try? self.trigger(event: .fetch)
-            case .failure:
-                try? self.trigger(event: .fail)
+    public func subscribe() async throws {
+        return try await withCheckedThrowingContinuation { continuation in
+            guard state == .blank else {
+                continuation.resume(throwing: ShareDocumentError.alreadySubscribed)
+                return
+            }
+            let msg = SubscribeMessage(collection: id.collection, document: id.key, version: version)
+            connection.send(message: msg).whenComplete { result in
+                Task {
+                    do {
+                        switch result {
+                        case .success:
+                            try await self.trigger(event: .fetch)
+                            continuation.resume()
+                        case .failure(let error):
+                            try await self.trigger(event: .fail)
+                            continuation.resume(throwing: error)
+                        }
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
             }
         }
     }
 
-    public func change(onChange: (JSON0Proxy) throws -> Void) throws {
+    public func change(onChange: (JSON0Proxy) throws -> Void) async throws {
         guard let data = data else {
             return
         }
@@ -95,7 +121,7 @@ final public class ShareDocument<Entity>: Identifiable where Entity: Codable {
             return
         }
         try apply(operations: transaction.operations)
-        send(.update(operations: transaction.operations))
+        try await send(.update(operations: transaction.operations))
     }
 }
 
@@ -183,26 +209,33 @@ extension ShareDocument {
     }
 
     /// Send ops to server or append to ops queue
-    func send(_ operation: OperationData) {
-        guard inflightOperation == nil, let source = connection.clientID, let version = version else {
-            queuedOperations.insert(operation, at: 0)
-            return
-        }
-        let msg = OperationMessage(
-            collection: id.collection,
-            document: id.key,
-            source: source,
-            data: operation,
-            version: version
-        )
-        connection.send(message: msg).whenComplete { result in
-            switch result {
-            case .success:
-                self.inflightOperation = operation
-            case .failure:
-                // Put op group back to beginning of queue
-                self.queuedOperations.append(operation)
-                self.inflightOperation = nil
+    func send(_ operation: OperationData) async throws {
+        return try await withCheckedThrowingContinuation { continuation in
+            guard inflightOperation == nil, let source = connection.clientID, let version = version else {
+                queuedOperations.prepend(operation)
+                continuation.resume()
+                return
+            }
+            let msg = OperationMessage(
+                collection: id.collection,
+                document: id.key,
+                source: source,
+                data: operation,
+                version: version
+            )
+            connection.send(message: msg).whenComplete { result in
+                Task {
+                    switch result {
+                    case .success:
+                        await self.setInflightOperation(operation)
+                        continuation.resume()
+                    case .failure(let error):
+                        // Put op group back to beginning of queue
+                        await self.appendOperation(operation)
+                        await self.setInflightOperation(nil)
+                        continuation.resume(throwing: error)
+                    }
+                }
             }
         }
     }
