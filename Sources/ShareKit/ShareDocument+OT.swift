@@ -7,10 +7,11 @@ protocol OperationalTransformDocument {
     func sync(_ data: OperationData, version: UInt) throws
     func ack(version: UInt, sequence: UInt) throws
     func rollback(_ data: OperationData?, version: UInt) throws
+    func setNotCreated() throws
 }
 
 extension ShareDocument: OperationalTransformDocument {
-    // Shift inflightOps into queuedOps for re-send
+    /// Shift inflightOps into queuedOps for re-send
     func pause() {
         try? trigger(event: .pause)
         if let inflight = inflightOperation {
@@ -27,7 +28,7 @@ extension ShareDocument: OperationalTransformDocument {
         send(group)
     }
 
-    // Replace document data
+    /// Replace document data
     func put(_ data: AnyCodable?, version: UInt, type: OperationalTransformType?) throws {
         if let type = type {
             guard let transformer = OperationalTransformTypes[type] else {
@@ -47,7 +48,7 @@ extension ShareDocument: OperationalTransformDocument {
         resume()
     }
 
-    // Sync with remote ops from server
+    /// Sync with remote ops from server
     func sync(_ data: OperationData, version: UInt) throws {
         switch data {
         case .create(let type, let document):
@@ -60,7 +61,7 @@ extension ShareDocument: OperationalTransformDocument {
         }
     }
 
-    // Verify server ack for inflight message
+    /// Verify server ack for inflight message
     func ack(version: UInt, sequence: UInt) throws {
         guard inflightOperation != nil else {
             throw ShareDocumentError.operationAck
@@ -70,11 +71,16 @@ extension ShareDocument: OperationalTransformDocument {
         resume()
     }
 
-    // Rejected message from server
+    /// Rejected message from server
     func rollback(_ data: OperationData?, version: UInt) throws {
         guard let data = data else { return }
 //        self.version = min(version, self.version)
         print("rollback \(data)")
 //      ops.forEach(apply)
+    }
+
+    func setNotCreated() throws {
+        try trigger(event: .setNotCreated)
+        inflightOperation = nil
     }
 }

@@ -95,6 +95,7 @@ struct VersionedDocumentData: Codable {
 struct VersionedData: Codable {
     var data: AnyCodable?
     var version: UInt
+    var type: OperationalTransformType?
 
     enum CodingKeys: String, CodingKey {
         case data

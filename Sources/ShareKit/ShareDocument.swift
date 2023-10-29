@@ -31,6 +31,9 @@ final public class ShareDocument<Entity>: Identifiable where Entity: Codable {
     private var data: AnyCodable?
 
     private(set) var state: State
+    public var notCreated: Bool {
+        return state == .notCreated
+    }
 
     var documentTransformer: OperationalTransformer.Type?
     var transformer: OperationalTransformer.Type {
@@ -50,6 +53,9 @@ final public class ShareDocument<Entity>: Identifiable where Entity: Codable {
     }
 
     public func create(_ entity: Entity, type: OperationalTransformType? = nil) throws {
+        if !notCreated {
+            throw ShareDocumentError.documentState
+        }
         let jsonData = try JSONEncoder().encode(entity)
         let json = try AnyCodable(data: jsonData)
         try put(json, version: 0, type: type)
@@ -101,6 +107,7 @@ extension ShareDocument {
         case ready
         case deleted
         case fetchError
+        case notCreated
     }
 
     enum Event {
@@ -111,12 +118,15 @@ extension ShareDocument {
         case resume
         case delete
         case fail
+        case setNotCreated
     }
 
     typealias Transition = () throws -> State
 
     func makeTransition(for event: Event) throws -> Transition {
         switch (state, event) {
+        case (.pending, .setNotCreated):
+            return { .notCreated }
         case (.blank, .fetch):
             return { .pending }
         case (.blank, .put), (.pending, .put), (.ready, .put):

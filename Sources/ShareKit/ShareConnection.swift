@@ -165,7 +165,11 @@ private extension ShareConnection {
             throw ShareConnectionError.unknownDocument
         }
         if let versionedData = message.data {
-            try document.put(versionedData.data, version: versionedData.version, type: message.type)
+            if versionedData.type == nil && versionedData.data == nil {
+                try document.setNotCreated()
+            } else {
+                try document.put(versionedData.data, version: versionedData.version, type: message.type)
+            }
         } else {
             // TODO ack empty subscribe resp
 //            try document.ack()
