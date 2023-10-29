@@ -1,7 +1,7 @@
 import Foundation
 import NIO
-import NIOConcurrencyHelpers
 import WebSocketKit
+import Atomics
 
 public final class ShareClient {
     public enum EventLoopGroupProvider {
@@ -27,7 +27,7 @@ public final class ShareClient {
     private let eventLoopGroupProvider: EventLoopGroupProvider
     private let eventLoopGroup: EventLoopGroup
     private let configuration: Configuration
-    private let isShutdown = NIOAtomic.makeAtomic(value: false)
+    private let isShutdown = ManagedAtomic<Bool>(false)
 
     public init(eventLoopGroupProvider: EventLoopGroupProvider, configuration: Configuration = .init()) {
         self.eventLoopGroupProvider = eventLoopGroupProvider
@@ -79,7 +79,7 @@ public final class ShareClient {
         case .shared:
             return
         case .createNew:
-            if self.isShutdown.compareAndExchange(expected: false, desired: true) {
+            if self.isShutdown.compareExchange(expected: false, desired: true, ordering: .sequentiallyConsistent).exchanged {
                 try self.eventLoopGroup.syncShutdownGracefully()
             } else {
                 throw WebSocketClient.Error.alreadyShutdown
@@ -92,7 +92,7 @@ public final class ShareClient {
         case .shared:
             return
         case .createNew:
-            assert(self.isShutdown.load(), "ShareClient not shutdown before deinit.")
+            assert(self.isShutdown.load(ordering: .relaxed), "ShareClient not shutdown before deinit.")
         }
     }
 }
