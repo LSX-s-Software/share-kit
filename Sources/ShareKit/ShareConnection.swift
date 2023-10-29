@@ -1,7 +1,10 @@
 import Foundation
 import WebSocketKit
+import OSLog
 
 final public class ShareConnection {
+    private let logger = Logger(subsystem: "ShareKit", category: "ShareConnection")
+
     enum ShareConnectionError: Swift.Error, LocalizedError {
         case encodeMessage
         case unsupportedType
@@ -94,7 +97,7 @@ final public class ShareConnection {
                 promise.fail(ShareConnectionError.encodeMessage)
                 return
             }
-            print("sent \(messageString)")
+            self.logger.debug("Sent: \(messageString)")
             self.webSocket.send(messageString, promise: promise)
         }
         return promise.futureResult
@@ -111,20 +114,21 @@ private extension ShareConnection {
     }
 
     func handleSocketText(_ socket: WebSocket, _ text: String) {
-        print("received \(text)")
+        logger.debug("Received \(text)")
         guard let data = text.data(using: .utf8),
               let message = try? JSONDecoder().decode(GenericMessage.self, from: data) else {
+            logger.warning("Socket received invalid message: \(text)")
             return
         }
-        guard message.error == nil else {
-            print(message.error?.message)
-            handleErrorMessage(message)
+        if let error = message.error {
+            logger.warning("Socket received error: \(error)")
+            handleErrorMessage(message, data: data)
             return
         }
         do {
             try handleMessage(message.action, data: data)
         } catch {
-            print(error)
+            logger.warning("Message handling error: \(error)")
         }
     }
 
@@ -205,11 +209,34 @@ private extension ShareConnection {
         }
     }
 
-    func handleErrorMessage(_ message: GenericMessage) {
-        guard let error = message.error else {
+    func handleErrorMessage(_ message: GenericMessage, data: Data) {
+        guard let error = message.error, let code = ShareDBError(rawValue: error.code) else {
+            logger.warning("Unknown error message: \(message.error?.message ?? "nil")")
             return
         }
-        // TODO rollback if action = op
-        print("error \(error.message)")
+        // TODO: rollback if action = op
+        do {
+            let message = try JSONDecoder().decode(OperationMessage.self, from: data)
+            let documentID = DocumentID(message.document, in: message.collection)
+            guard let document = documentStore[documentID] else {
+                throw ShareConnectionError.unknownDocument
+            }
+            switch code {
+            case .docAlreadyCreated, .docWasDeleted:
+                if code == .docAlreadyCreated {
+                    document.resume()
+                } else {
+                    try document.sync(.delete(isDeleted: true), version: message.version)
+                }
+            case .docTypeNotRecognized:
+                guard case let .create(type, _) = message.data else { break }
+                logger.warning("Document type \"\(type.rawValue)\" not recognized. Please register this type on the server.")
+                try document.sync(.delete(isDeleted: true), version: message.version)
+            default:
+                logger.error("Unhandled error: \(error)")
+            }
+        } catch {
+            logger.warning("Error handling error: \(error)")
+        }
     }
 }

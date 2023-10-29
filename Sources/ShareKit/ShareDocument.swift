@@ -145,7 +145,7 @@ extension ShareDocument {
 }
 
 extension ShareDocument {
-    // Apply raw JSON operation with OT transformer
+    /// Apply raw JSON operation with OT transformer
     func apply(operations: [AnyCodable]) throws {
         guard let data = self.data else {
             return
@@ -155,14 +155,14 @@ extension ShareDocument {
         try update(json: newJSON)
     }
 
-    // Update document JSON and cast to entity
+    /// Update document JSON and cast to entity
     func update(json: AnyCodable) throws {
         let data = try JSONEncoder().encode(json)
         self.value.send(try JSONDecoder().decode(Entity.self, from: data))
         self.data = json
     }
 
-    // Update document version and validate version sequence
+    /// Update document version and validate version sequence
     func update(version: UInt, validateSequence: Bool) throws {
         if validateSequence, let oldVersion = self.version {
             guard version == oldVersion + 1 else {
@@ -172,7 +172,7 @@ extension ShareDocument {
         self.version = version
     }
 
-    // Send ops to server or append to ops queue
+    /// Send ops to server or append to ops queue
     func send(_ operation: OperationData) {
         guard inflightOperation == nil, let source = connection.clientID, let version = version else {
             queuedOperations.insert(operation, at: 0)
