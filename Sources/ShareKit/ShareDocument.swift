@@ -155,7 +155,7 @@ extension ShareDocument {
             return { .notCreated }
         case (.blank, .fetch):
             return { .pending }
-        case (.blank, .put), (.pending, .put), (.ready, .put):
+        case (.blank, .put), (.pending, .put), (.ready, .put), (.notCreated, .put):
             return { .ready }
         case (.ready, .pause):
             return { .paused }
