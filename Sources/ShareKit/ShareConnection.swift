@@ -6,9 +6,11 @@ import Atomics
 final public class ShareConnection {
     private static let logger = Logger(subsystem: "ShareKit", category: "ShareConnection")
 
-    enum ShareConnectionError: Swift.Error, LocalizedError {
+    enum ShareConnectionError: Error, LocalizedError {
         case encodeMessage
         case unsupportedType
+        case unsupportedProtocol(expected: UInt, received: UInt?)
+        case badFormedClientID
         case documentEntityType
         case unkownQueryID
         case unknownDocument
@@ -136,6 +138,8 @@ private extension ShareConnection {
 
     func handleMessage(_ action: MessageAction, data: Data) async throws {
         switch action {
+        case .`init`:
+            break
         case .handshake:
             try handleHandshakeMessage(data)
         case .subscribe:
@@ -151,7 +155,13 @@ private extension ShareConnection {
 
     func handleHandshakeMessage(_ data: Data) throws {
         let message = try JSONDecoder().decode(HandshakeMessage.self, from: data)
-        clientID = message.clientID
+        guard message.protocolMajor == 1 else {
+            throw ShareConnectionError.unsupportedProtocol(expected: 1, received: message.protocolMajor)
+        }
+        guard let clientID = message.clientID else {
+            throw ShareConnectionError.badFormedClientID
+        }
+        self.clientID = clientID
         if let defaultType = message.type {
             guard let transformer = OperationalTransformTypes[defaultType] else {
                 throw ShareConnectionError.unsupportedType

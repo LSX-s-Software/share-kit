@@ -273,6 +273,7 @@ enum OperationKey {
 }
 
 enum MessageAction: String, Codable {
+    case `init` = "init"
     case handshake = "hs"
     case subscribe = "s"
     case query = "q"
@@ -343,22 +344,6 @@ enum ShareDBError: String, Codable {
     ///
     /// This error can usually be remedied by remembering to register any types you need.
     case docTypeNotRecognized = "ERR_DOC_TYPE_NOT_RECOGNIZED"
-    /// `ERR_DEFAULT_TYPE_MISMATCH`
-    ///
-    /// The default type being used by the client does not match the default type expected by the server.
-    ///
-    /// This will typically only happen when using a different default type to the built-in `json0` used by ShareDB by
-    /// default (e.g. if using a fork). The exact same type must be used by both the client and the server, and
-    /// should be registered as the default type:
-    ///
-    /// ```javascript
-    /// var ShareDB = require('sharedb');
-    /// var forkedJson0 = require('forked-json0');
-    /// 
-    /// // Make sure to also do this on your client
-    /// ShareDB.types.defaultType = forkedJson0.type;
-    /// ```
-    case defaultTypeMismatch = "ERR_DEFAULT_TYPE_MISMATCH"
     /// `ERR_OP_NOT_ALLOWED_IN_PROJECTION`
     ///
     /// The submitted op is not valid when applied to the projection.
