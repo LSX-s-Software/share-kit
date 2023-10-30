@@ -35,6 +35,7 @@ public actor ShareDocument<Entity>: Identifiable where Entity: Codable {
     private var data: AnyCodable?
 
     private(set) var state: State
+    var subscribeCallback: (() -> Void)?
     public var notCreated: Bool {
         return state == .notCreated
     }
@@ -96,7 +97,9 @@ public actor ShareDocument<Entity>: Identifiable where Entity: Codable {
                         switch result {
                         case .success:
                             try await self.trigger(event: .fetch)
-                            continuation.resume()
+                            await self.onSubscribed {
+                                continuation.resume()
+                            }
                         case .failure(let error):
                             try await self.trigger(event: .fail)
                             continuation.resume(throwing: error)
@@ -152,10 +155,18 @@ extension ShareDocument {
     func makeTransition(for event: Event) throws -> Transition {
         switch (state, event) {
         case (.pending, .setNotCreated):
+            subscribeCallback?()
+            subscribeCallback = nil
+            return { .notCreated }
+        case (.notCreated, .resume):
             return { .notCreated }
         case (.blank, .fetch):
             return { .pending }
-        case (.blank, .put), (.pending, .put), (.ready, .put), (.notCreated, .put):
+        case (.pending, .put):
+            subscribeCallback?()
+            subscribeCallback = nil
+            return { .ready }
+        case (.blank, .put), (.ready, .put), (.notCreated, .put):
             return { .ready }
         case (.ready, .pause):
             return { .paused }
@@ -177,6 +188,10 @@ extension ShareDocument {
     func trigger(event: Event) throws {
         let transition = try makeTransition(for: event)
         state = try transition()
+    }
+
+    func onSubscribed(_ action: @escaping () -> Void) {
+        subscribeCallback = action
     }
 }
 
@@ -213,7 +228,6 @@ extension ShareDocument {
         return try await withCheckedThrowingContinuation { continuation in
             guard inflightOperation == nil, let source = connection.clientID, let version = version else {
                 queuedOperations.prepend(operation)
-                continuation.resume()
                 return
             }
             let msg = OperationMessage(

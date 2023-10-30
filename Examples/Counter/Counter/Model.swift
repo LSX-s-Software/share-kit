@@ -18,15 +18,20 @@ class CounterViewModel: ObservableObject {
         let client = ShareClient(eventLoopGroupProvider: .createNew)
         client.connect("ws://localhost:8080") { connection in
             Task {
-                guard let document: ShareDocument<Counter> = try? await connection.subscribe(document: "counter", in: "examples") else {
-                    return
+                do {
+                    let document: ShareDocument<Counter> = try await connection.subscribe(document: "counter", in: "examples")
+                    if await document.notCreated {
+                        try await document.create(Counter())
+                    }
+                    await document.value
+                        .compactMap { $0 }
+                        .receive(on: RunLoop.main)
+                        .assign(to: \.counter, on: self)
+                        .store(in: &self.bag)
+                    self.document = document
+                } catch {
+                    print(error)
                 }
-                await document.value
-                    .compactMap { $0 }
-                    .receive(on: RunLoop.main)
-                    .assign(to: \.counter, on: self)
-                    .store(in: &self.bag)
-                self.document = document
             }
         }
         self.client = client
