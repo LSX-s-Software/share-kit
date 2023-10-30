@@ -13,20 +13,20 @@ public struct DocumentID: Hashable {
     }
 }
 
+public enum ShareDocumentError: Error {
+    case transformType
+    case documentState
+    case stateEvent
+    case decodeDocumentData
+    case operationalTransformType
+    case applyTransform
+    case operationVersion
+    case operationAck
+    case alreadySubscribed
+}
+
 public actor ShareDocument<Entity>: Identifiable where Entity: Codable {
     private let logger = Logger(subsystem: "ShareKit", category: "ShareDocument")
-
-    enum ShareDocumentError: Error {
-        case transformType
-        case documentState
-        case stateEvent
-        case decodeDocumentData
-        case operationalTransformType
-        case applyTransform
-        case operationVersion
-        case operationAck
-        case alreadySubscribed
-    }
 
     public let id: DocumentID
 

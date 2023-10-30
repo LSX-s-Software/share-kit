@@ -9,7 +9,7 @@ protocol OperationalTransformer {
     static func inverse(_ operations: [AnyCodable]) throws -> [AnyCodable]
 }
 
-enum OperationalTransformError: Error {
+public enum OperationalTransformError: Error {
     case invalidPath
     case pathDoesNotExist
     case missingOperationData

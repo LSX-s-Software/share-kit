@@ -3,6 +3,18 @@ import NIOTransportServices
 import WebSocketKit
 import Atomics
 
+public enum ShareClientError: Error, LocalizedError {
+    case alreadyShutdown
+    
+    public var errorDescription: String? {
+        if #available(macOS 12, *) {
+            return String(localized: "Client already shutdown.")
+        } else {
+            return "Client already shutdown."
+        }
+    }
+}
+
 public final class ShareClient {
     public enum EventLoopGroupProvider {
         case shared(EventLoopGroup)
@@ -14,13 +26,6 @@ public final class ShareClient {
 
         public init(reconnect: Bool = true) {
             self.reconnect = reconnect
-        }
-    }
-
-    public enum Error: Swift.Error, LocalizedError {
-        case alreadyShutdown
-        public var errorDescription: String? {
-            return "\(self)"
         }
     }
 
@@ -82,7 +87,7 @@ public final class ShareClient {
             if self.isShutdown.compareExchange(expected: false, desired: true, ordering: .sequentiallyConsistent).exchanged {
                 try self.eventLoopGroup.syncShutdownGracefully()
             } else {
-                throw WebSocketClient.Error.alreadyShutdown
+                throw ShareClientError.alreadyShutdown
             }
         }
     }
