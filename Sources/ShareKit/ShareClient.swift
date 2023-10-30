@@ -1,5 +1,5 @@
 import Foundation
-import NIO
+import NIOTransportServices
 import WebSocketKit
 import Atomics
 
@@ -35,7 +35,7 @@ public final class ShareClient {
         case .shared(let group):
             self.eventLoopGroup = group
         case .createNew:
-            self.eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 2)
+            self.eventLoopGroup = NIOTSEventLoopGroup(loopCount: 2)
         }
         self.configuration = configuration
     }
