@@ -228,6 +228,7 @@ extension ShareDocument {
         return try await withCheckedThrowingContinuation { continuation in
             guard inflightOperation == nil, let source = connection.clientID, let version = version else {
                 queuedOperations.prepend(operation)
+                continuation.resume()
                 return
             }
             let msg = OperationMessage(
