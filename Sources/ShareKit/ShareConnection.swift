@@ -101,7 +101,7 @@ final public class ShareConnection {
                 promise.fail(ShareConnectionError.encodeMessage)
                 return
             }
-            ShareConnection.logger.debug("Sent: \(messageString)")
+//            ShareConnection.logger.debug("Sent: \(messageString)")
             self.webSocket.send(messageString, promise: promise)
         }
         return promise.futureResult
@@ -123,7 +123,7 @@ private extension ShareConnection {
             ShareConnection.logger.warning("Socket received invalid message: \(text)")
             return
         }
-        ShareConnection.logger.debug("Received \(text)")
+//        ShareConnection.logger.debug("Received \(text)")
         if let error = message.error {
             ShareConnection.logger.warning("Socket received error: \(error)")
             await handleErrorMessage(message, data: data)
