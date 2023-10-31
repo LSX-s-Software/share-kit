@@ -57,18 +57,6 @@ public actor ShareDocument<Entity>: Identifiable where Entity: Codable {
         self.value = CurrentValueSubject(nil)
     }
 
-    func setInflightOperation(_ operation: OperationData?) {
-        inflightOperation = operation
-    }
-
-    func appendOperation(_ operation: OperationData) {
-        queuedOperations.append(operation)
-    }
-
-    func prependOperation(_ operation: OperationData) {
-        queuedOperations.prepend(operation)
-    }
-
     public func create(_ entity: Entity, type: OperationalTransformType? = nil) async throws {
         if !notCreated {
             throw ShareDocumentError.documentState
@@ -225,33 +213,24 @@ extension ShareDocument {
 
     /// Send ops to server or append to ops queue
     func send(_ operation: OperationData) async throws {
-        return try await withCheckedThrowingContinuation { continuation in
-            guard inflightOperation == nil, let source = connection.clientID, let version = version else {
-                queuedOperations.prepend(operation)
-                continuation.resume()
-                return
-            }
-            let msg = OperationMessage(
-                collection: id.collection,
-                document: id.key,
-                source: source,
-                data: operation,
-                version: version
-            )
-            connection.send(message: msg).whenComplete { result in
-                Task {
-                    switch result {
-                    case .success:
-                        await self.setInflightOperation(operation)
-                        continuation.resume()
-                    case .failure(let error):
-                        // Put op group back to beginning of queue
-                        await self.appendOperation(operation)
-                        await self.setInflightOperation(nil)
-                        continuation.resume(throwing: error)
-                    }
-                }
-            }
+        guard inflightOperation == nil, let source = connection.clientID, let version = version else {
+            queuedOperations.prepend(operation)
+            return
+        }
+        let msg = OperationMessage(
+            collection: id.collection,
+            document: id.key,
+            source: source,
+            data: operation,
+            version: version
+        )
+        do {
+            try await connection.send(message: msg).get()
+            inflightOperation = operation
+        } catch {
+            queuedOperations.append(operation)
+            inflightOperation = nil
+            throw error
         }
     }
 }
