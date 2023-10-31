@@ -101,7 +101,7 @@ final public class ShareConnection {
                 promise.fail(ShareConnectionError.encodeMessage)
                 return
             }
-//            ShareConnection.logger.debug("Sent: \(messageString)")
+//            Self.logger.debug("Sent: \(messageString)")
             self.webSocket.send(messageString, promise: promise)
         }
         return promise.futureResult
@@ -112,7 +112,8 @@ private extension ShareConnection {
     func initiateSocket() {
         webSocket.onText(handleSocketText)
         let message = HandshakeMessage(clientID: self.clientID)
-        send(message: message).whenFailure { _ in
+        send(message: message).whenFailure { error in
+            Self.logger.error("Handshake failed: \(error)")
             let _ = self.webSocket.close()
         }
     }
@@ -120,19 +121,19 @@ private extension ShareConnection {
     func handleSocketText(_ socket: WebSocket, _ text: String) async {
         guard let data = text.data(using: .utf8),
               let message = try? JSONDecoder().decode(GenericMessage.self, from: data) else {
-            ShareConnection.logger.warning("Socket received invalid message: \(text)")
+            Self.logger.warning("Socket received invalid message: \(text)")
             return
         }
-//        ShareConnection.logger.debug("Received \(text)")
+//        Self.logger.debug("Received \(text)")
         if let error = message.error {
-            ShareConnection.logger.warning("Socket received error: \(error)")
+            Self.logger.warning("Socket received error: \(error)")
             await handleErrorMessage(message, data: data)
             return
         }
         do {
             try await handleMessage(message.action, data: data)
         } catch {
-            ShareConnection.logger.warning("Message handling error: \(error)")
+            Self.logger.warning("Message handling error: \(error)")
         }
     }
 
@@ -227,7 +228,7 @@ private extension ShareConnection {
 
     func handleErrorMessage(_ message: GenericMessage, data: Data) async {
         guard let error = message.error, let code = ShareDBError(rawValue: error.code) else {
-            ShareConnection.logger.warning("Unknown error message: \(message.error?.message ?? "nil")")
+            Self.logger.warning("Unknown error message: \(message.error?.message ?? "nil")")
             return
         }
         // TODO: rollback if action = op
@@ -246,13 +247,13 @@ private extension ShareConnection {
                 }
             case .docTypeNotRecognized:
                 guard case let .create(type, _) = message.data else { break }
-                ShareConnection.logger.warning("Document type \"\(type.rawValue)\" not recognized. Please register this type on the server.")
+                Self.logger.warning("Document type \"\(type.rawValue)\" not recognized. Please register this type on the server.")
                 try await document.sync(.delete(isDeleted: true), version: message.version)
             default:
-                ShareConnection.logger.error("Unhandled error: \(error)")
+                Self.logger.error("Unhandled error: \(error)")
             }
         } catch {
-            ShareConnection.logger.warning("Error handling error: \(error)")
+            Self.logger.warning("Error handling error: \(error)")
         }
     }
 }

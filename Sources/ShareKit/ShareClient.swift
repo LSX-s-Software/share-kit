@@ -2,6 +2,7 @@ import Foundation
 import NIOTransportServices
 import WebSocketKit
 import Atomics
+import OSLog
 
 public enum ShareClientError: Error, LocalizedError {
     case alreadyShutdown
@@ -29,6 +30,7 @@ public final class ShareClient {
         }
     }
 
+    private static let logger = Logger(subsystem: "ShareKit", category: "ShareClient")
     private let eventLoopGroupProvider: EventLoopGroupProvider
     private let eventLoopGroup: EventLoopGroup
     private let configuration: Configuration
@@ -57,9 +59,11 @@ public final class ShareClient {
             } else {
                 let connection = ShareConnection(socket: socket, on: eventLoop)
                 socket.onClose.whenComplete { _ in
+                    Self.logger.info("WebSocket closed.")
                     guard self.configuration.reconnect else {
                         return
                     }
+                    Self.logger.info("Reconnecting...")
                     eventLoop.execute {
                         connection.disconnect()
                         self.connect(url, connection: connection, onConnect: onConnect)
@@ -68,10 +72,12 @@ public final class ShareClient {
                 onConnect(connection)
             }
         }
-        wsFuture.whenFailure { _ in
+        wsFuture.whenFailure { error in
+            Self.logger.warning("WebSocket connect failed: \(error)")
             guard self.configuration.reconnect else {
                 return
             }
+            Self.logger.info("Retrying in 1 second...")
             eventLoop.scheduleTask(in: .seconds(1)) {
                 connection?.disconnect()
                 self.connect(url, connection: connection, onConnect: onConnect)
