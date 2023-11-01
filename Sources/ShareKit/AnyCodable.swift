@@ -52,6 +52,13 @@ public enum AnyCodable {
             let tuples = dictionary.map { ($0, AnyCodable($1)) }
             let wrappedDictionary = Dictionary(uniqueKeysWithValues: tuples)
             self = .dictionary(wrappedDictionary)
+        case let codable as Codable:
+            if let data = try? JSONEncoder().encode(codable),
+               let anyCodable = try? AnyCodable(data: data) {
+                self = anyCodable
+            } else {
+                self = .undefined
+            }
         case _ as NSNull, nil:
             self = .null
         default:
