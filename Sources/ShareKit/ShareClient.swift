@@ -8,10 +8,8 @@ public enum ShareClientError: Error, LocalizedError {
     case alreadyShutdown
     
     public var errorDescription: String? {
-        if #available(macOS 12, *) {
-            return String(localized: "Client already shutdown.")
-        } else {
-            return "Client already shutdown."
+        switch self {
+        case .alreadyShutdown: "Client already shutdown."
         }
     }
 }
